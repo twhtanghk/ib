@@ -1,0 +1,25 @@
+{
+  "name": "ib",
+  "version": "0.0.1",
+  "description": "IB Client Portal Web API",
+  "main": "index.js",
+  "scripts": {
+    "test": "coffee test/index.coffee"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/twhtanghk/ib.git"
+  },
+  "author": "Tommy Tang",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/twhtanghk/ib/issues"
+  },
+  "homepage": "https://github.com/twhtanghk/ib#readme",
+  "devDependencies": {
+    "coffeescript": "^2.3.2",
+    "mqtt": "^2.18.8",
+    "mqtt-level-store": "^2.2.0",
+    "needle": "^2.2.4"
+  }
+}

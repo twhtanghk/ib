@@ -1,0 +1,19 @@
+version: '3'
+services:
+  ib:
+    image: openjdk
+    volumes: ./gateway:/root/gateway
+    ports:
+      - 5000
+    env_file:
+      - ../.env
+    command /root/gateway/bin/run.sh /root/gateway/root/conf.yaml
+
+  node:
+    image: node
+    volumes:
+      - ./src:/root
+    env_file:
+      - ../.env
+      - ./.env
+    command: npm test
