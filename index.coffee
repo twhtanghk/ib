@@ -9,20 +9,21 @@ ib =
     (await http 'get', "#{@url}/portfolio/accounts", opts)
       .body
   quote: (symbol) ->
-    {conid, companyName} =(await http 'post', "#{@url}/iserver/secdef/search", symbol: symbol, opts)
+    {conid, companyName} = (await http 'post', "#{@url}/iserver/secdef/search", symbol: symbol, opts)
       .body[0]
     res = (await http 'get', "#{@url}/iserver/marketdata/snapshot?conids=#{conid}", opts)
       .body[0]
     return
+      src: 'ib'
       symbol: symbol
       name: companyName
-      price:
+      quote:
         curr: parseFloat res['31']
         high: parseFloat res['70']
         low: parseFloat res['71']
         last: parseFloat res['7296']
         change: [parseFloat(res['82']), parseFloat(res['83'])]
-      lastUpdatedAt: new Date res['_updated']
+      lastUpdatedAt: res['_updated']
 
 {incoming, outgoing} = require('mqtt-level-store') './data'
 client = require 'mqtt'
@@ -65,7 +66,7 @@ class IBCron extends Readable
     require 'node-schedule'
       .scheduleJob @crontab, =>
         console.debug "get quote for #{@symbols} at #{new Date().toLocaleString()}"
-        @symbols.map (symbol) ->
+        @symbols.map (symbol) =>
           try
             @emit 'data', await ib.quote symbol
           catch err
