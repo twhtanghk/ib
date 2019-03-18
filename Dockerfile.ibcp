@@ -1,0 +1,18 @@
+FROM openjdk
+
+ENV APP=/root
+
+WORKDIR $APP
+
+RUN curl -SL https://download2.interactivebrokers.com/portal/clientportal.beta.gw.zip |jar xf /dev/stdin \
+&&  chmod a+x $APP/bin/run.sh \
+&&  apt update \
+&&  apt install -y python-pip \
+&&  pip install pyyaml \
+&&  rm -rf /var/lib/apt/lists/*
+
+ADD init.py /root/bin
+
+EXPOSE 5000
+
+CMD /root/bin/init.py && /root/bin/run.sh /root/root/config.yaml

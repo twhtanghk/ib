@@ -1,13 +1,11 @@
 version: '3'
 services:
   ib:
-    image: openjdk
-    volumes: ./gateway:/root/gateway
+    image: twhtanghk/ibcp
     ports:
       - 5000
     env_file:
       - ../.env
-    command /root/gateway/bin/run.sh /root/gateway/root/conf.yaml
 
   node:
     image: node
