@@ -4,6 +4,14 @@ http.defaults json: true
 {incoming, outgoing} = require('mqtt-level-store') './data'
 
 class IB
+  @props:
+    curr: '31'
+    last: '7296'
+    low: '71'
+    high: '70'
+    diff: '82'
+    diffPercent: '83'
+
   url: new URL process.env.IBURL || "https://ib:5000/v1/portal"
 
   client:
@@ -17,13 +25,13 @@ class IB
     @client.ws = new WebSocket "#{url.href}/ws"
       .on 'open', ->
         console.debug "#{url.href}/ws connected"
+      .on 'close', ->
+        console.debug "#{url.href}/ws disconnected"
       .on 'message', (msg) =>
-        try
-          msg = JSON.parse msg.toString()
-        catch err
-          console.error err
-        msg.symbol = await @symbol msg.conid
-        console.log msg
+        msg = await @convert msg
+        if Object.keys(msg.quote).length
+          msg.src = 'ib'
+          @client.mqtt.publish process.env.MQTTTOPIC, JSON.stringify msg
     @client.mqtt = require 'mqtt'
       .connect process.env.MQTTURL,
         username: process.env.MQTTUSER
@@ -43,13 +51,41 @@ class IB
           data.map (symbol) =>
             @subscribe symbol
 
+  convert: (msg) ->
+    ret = quote: {}
+    try
+      msg = JSON.parse msg.toString()
+      if process.env.DEBUG == 'true'
+        console.debug msg
+      if 'conid' of msg
+        ret.symbol = await @symbol msg.conid
+      if '_updated' of msg
+        ret.lastUpdatedAt = msg._updated
+      if IB.props.curr of msg
+        ret.quote.curr = parseFloat msg[IB.props.curr]
+      if IB.props.last of msg
+        ret.quote.last = parseFloat msg[IB.props.last]
+      if IB.props.low of msg and IB.props.high of msg
+        ret.quote.lowHigh = [
+          parseFloat msg[IB.props.low]
+          parseFloat msg[IB.props.high]
+        ]
+      if IB.props.diff of msg and IB.props.diffPercent of msg
+        ret.quote.change = [
+          parseFloat msg[IB.props.diff]
+          parseFloat msg[IB.props.diffPercent]
+        ]
+      return ret
+    catch err
+      console.error err
+
   accounts: ->
     (await http 'get', "#{@url}/portfolio/accounts")
       .body
 
   subscribe: (symbol) ->
     @client.ws
-      ?.send "s+md+#{await @conid symbol}+{\"tempo\":2000,\"snapshot\":true}"
+      ?.send "s+md+#{await @conid symbol}"
 
   unsubscribe: (symbol) ->
     @client.ws
