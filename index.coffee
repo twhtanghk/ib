@@ -1,87 +1,85 @@
 http = require 'needle'
 http.defaults json: true
-opts =
-  rejectUnauthorized: false
+{URL} = require 'url'
+{incoming, outgoing} = require('mqtt-level-store') './data'
 
-ib =
-  url: process.env.IBURL || "https://ib:5000/v1/portal"
+class IB
+  url: new URL process.env.IBURL || "https://ib:5000/v1/portal"
+
+  client:
+    ws: null
+    mqtt: null
+
+  constructor: ->
+    WebSocket = require 'ws'
+    url = new URL @url.href
+    url.protocol = 'wss'
+    @client.ws = new WebSocket "#{url.href}/ws"
+      .on 'open', ->
+        console.debug "#{url.href}/ws connected"
+      .on 'message', (msg) =>
+        try
+          msg = JSON.parse msg.toString()
+        catch err
+          console.error err
+        msg.symbol = await @symbol msg.conid
+        console.log msg
+    @client.mqtt = require 'mqtt'
+      .connect process.env.MQTTURL,
+        username: process.env.MQTTUSER
+        clientId: process.env.MQTTCLIENT
+        incomingStore: incoming
+        outgoingStore: outgoing
+      .on 'connect', =>
+        console.debug 'mqtt connected'
+        @client.mqtt
+          .subscribe "#{process.env.MQTTTOPIC.split('/')[0]}/#", qos: 2
+      .on 'message', (topic, msg) =>
+        try
+          {action, data} = JSON.parse msg.toString()
+        catch err
+          console.error err
+        if action == 'subscribe'
+          data.map (symbol) =>
+            @subscribe symbol
+
   accounts: ->
-    (await http 'get', "#{@url}/portfolio/accounts", opts)
+    (await http 'get', "#{@url}/portfolio/accounts")
       .body
-  quote: (symbol) ->
-    {conid, companyName} = (await http 'post', "#{@url}/iserver/secdef/search", symbol: symbol, opts)
+
+  subscribe: (symbol) ->
+    @client.ws
+      ?.send "s+md+#{await @conid symbol}+{\"tempo\":2000,\"snapshot\":true}"
+
+  unsubscribe: (symbol) ->
+    @client.ws
+      ?.send "u+md+#{await @conid symbol}"
+
+  conid: (symbol) ->
+    {conid} = (await http 'post', "#{@url}/iserver/secdef/search", symbol: symbol)
       .body[0]
-    res = (await http 'get', "#{@url}/iserver/marketdata/snapshot?conids=#{conid}", opts)
+    conid
+
+  symbol: (conid) ->
+    {symbol} = (await http 'get', "#{@url}/iserver/contract/#{conid}/info")
+      .body
+    parseInt symbol
+
+  quote: (symbol) ->
+    conid = await @conid symbol
+    res = (await http 'get', "#{@url}/iserver/marketdata/snapshot?conids=#{conid}")
       .body[0]
     return
       src: 'ib'
       symbol: symbol
-      name: companyName
       quote:
         curr: parseFloat res['31']
-        high: parseFloat res['70']
-        low: parseFloat res['71']
         last: parseFloat res['7296']
+        lowHigh: [
+          parseFloat res['71']
+          parseFloat res['70']
+        ]
         change: [parseFloat(res['82']), parseFloat(res['83'])]
       lastUpdatedAt: res['_updated']
 
-{incoming, outgoing} = require('mqtt-level-store') './data'
-client = require 'mqtt'
-  .connect process.env.MQTTURL,
-    username: process.env.MQTTUSER
-    clientId: process.env.MQTTCLIENT
-    incomingStore: incoming
-    outgoingStore: outgoing
-  .on 'connect', ->
-    client.subscribe process.env.MQTTTOPIC, qos: 2
-    console.debug 'mqtt connected'
-
-{Readable, Transform} = require 'stream'
-
-class IBCron extends Readable
-  symbols: []
-
-  crontab: process.env.CRONTAB || '0 */5 9-16 * * 1-5'
-
-  constructor: ({@contrab} = {}) ->
-    super objectMode: true
-
-    # check if message contains {action: 'subscribe', data: [1, 1156]}
-    # and update symbol list
-    client.on 'message', (topic, msg) =>
-      try
-        {action, data} = JSON.parse msg
-      catch err
-        console.error "#{msg}: #{err.toString()}"
-      if action == 'subscribe'
-        asc = (a, b) ->
-          a - b
-        data.sort asc
-        for i in data
-          if i not in @symbols
-            @symbols.push i
-        @symbols.sort asc
-        console.debug "update symbols: #{@symbols}"
-
-    require 'node-schedule'
-      .scheduleJob @crontab, =>
-        console.debug "get quote for #{@symbols} at #{new Date().toLocaleString()}"
-        @symbols.map (symbol) =>
-          try
-            @emit 'data', await ib.quote symbol
-          catch err
-            console.error "#{symbol}: #{err.toString()}"
-
-  _read: ->
-    false
-
-class IBMqtt extends Transform
-  constructor: (opts = {objectMode: true}) ->
-    super opts
-
-  _transform: (data, encoding, cb) ->
-    client.publish process.env.MQTTTOPIC, JSON.stringify data
-    @push data
-    cb()
-
-module.exports = {ib, IBCron, IBMqtt}
+module.exports = IB
