@@ -85,7 +85,6 @@ class IB
 
   subscribe: (symbol) ->
     opts = JSON.stringify
-      tempo: 5000
       snapshot: true
     @client.ws
       ?.send "s+md+#{await @conid symbol}+#{opts}"
