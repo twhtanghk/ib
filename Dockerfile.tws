@@ -1,0 +1,15 @@
+FROM debian
+
+ENV FILE=tws-latest-linux-x64.sh
+
+WORKDIR /root/Jts
+
+RUN apt update \
+&&  apt install -y wget libx11-6 libxext6 libxrender1 libxtst6 openjfx \
+&&  cd /tmp \
+&&  wget https://download2.interactivebrokers.com/installers/tws/latest/$FILE \
+&&  chmod u+x $FILE \
+&&  echo n |./$FILE \
+&&  rm -rf /var/lib/apt/lists/*
+
+CMD /root/Jts/tws
